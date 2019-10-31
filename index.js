@@ -75,16 +75,37 @@ function localFiles (opts) {
 }
 
 function s3Files (s3, opts) {
-  return function (cb) {
+  return async function (cb) {
     var params = {
       Bucket: opts.remote.bucket,
       Prefix: opts.remote.prefix
     };
 
-    s3.listObjects(params, function (err, data) {
-      if (err) { return cb(err); }
-      cb(err, data.Contents && formatDataContents(opts.remote.prefix, data.Contents));
-    });
+    let isTruncated = true;
+    let marker;
+    let s3Contents = [];
+    while(isTruncated) {
+      if (marker)
+        params.Marker = marker;
+
+      try {
+        const response = await s3.listObjects(params).promise();
+        response.Contents.forEach(item => {
+          s3Contents.push(item)
+        });
+
+        isTruncated = response.IsTruncated;
+
+        if (isTruncated) {
+          marker = response.Contents.slice(-1)[0].Key;
+        }
+
+      } catch(error) {
+        return cb(error)
+      }
+    }
+    cb(null, s3Contents && formatDataContents(opts.remote.prefix, s3Contents));
+
   };
 }
 
